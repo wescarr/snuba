@@ -29,9 +29,6 @@ from snuba.query.processors.mapping_promoter import MappingColumnPromoter
 from snuba.query.processors.prewhere import PrewhereProcessor
 from snuba.query.processors.slice_of_map_optimizer import SliceOfMapOptimizer
 from snuba.query.processors.table_rate_limit import TableRateLimit
-from snuba.query.processors.type_converters.hexint_column_processor import (
-    HexIntColumnProcessor,
-)
 from snuba.query.processors.type_converters.uuid_array_column_processor import (
     UUIDArrayColumnProcessor,
 )
@@ -134,7 +131,7 @@ promoted_tag_columns = {
     "level": "level",
 }
 
-promoted_context_columns = {"trace.trace_id": "trace_id", "trace.span_id": "span_id"}
+promoted_context_columns = {"trace.trace_id": "trace_id"}
 
 mandatory_conditions = [
     binary_condition(
@@ -165,7 +162,6 @@ query_processors = [
     ),
     UserColumnProcessor(),
     UUIDColumnProcessor({"event_id", "primary_hash", "trace_id"}),
-    HexIntColumnProcessor({"span_id"}),
     UUIDArrayColumnProcessor({"hierarchical_hashes"}),
     SliceOfMapOptimizer(),
     EventsBooleanContextsProcessor(),

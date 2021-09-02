@@ -48,13 +48,7 @@ This command runs unit and integration tests::
 Running sentry tests against snuba
 ++++++++++++++++++++++++++++++++++
 
-This section instead runs Sentry tests against a running Snuba installation
-
-Make sure there is no snuba container already running::
-
-    docker ps -a | grep snuba
-
-Start your local snuba api server::
+This section instead runs Sentry tests against a running Snuba installation::
 
     git checkout your-snuba-branch
     source .venv/bin/activate
