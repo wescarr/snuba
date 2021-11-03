@@ -1,5 +1,6 @@
 import React from 'react'
 import { useEffect, useState } from "react";
+import Client from "./api_client";
 
 
 type SystemQuery = {
@@ -14,13 +15,13 @@ type QueryRequest = {
     query_name: string,
 }
 
-const ClickhouseSystemQueries = () => {
+const ClickhouseSystemQueries = (api: Client) => {
 
-    const [availableQueries, setQueries] = useState<SystemQuery[]>([])
+    const [availableQueries, setQueries] = useState<SystemQuery[]>([]);
+    useEffect(() => { requestQueries() }, []);
 
     async function requestQueries() {
-        const res = await fetch("clickhouse_queries")
-        setQueries(await res.json());
+        setQueries(await api.getQueries());
     }
 
     async function runQuery(queryName: string) {
@@ -28,13 +29,12 @@ const ClickhouseSystemQueries = () => {
             host: "localhost", // TODO (this should be a dropdown)
             storage: "transactions", // TODO This should be a dropdown
             query_name: queryName
-        }
+        };
 
-        const result = await fetch("run_clickhouse_query", {headers: {"Content-Type": "application/json"}, method: "POST", body: JSON.stringify(params)})
-        console.log(await result.text())
+        const result = await fetch("run_clickhouse_query", {headers: {"Content-Type": "application/json"}, method: "POST", body: JSON.stringify(params)});
+        console.log(await result.text());
     }
 
-    useEffect(() => { requestQueries() }, []);
 
     return (
         <ul>
@@ -55,7 +55,7 @@ const ClickhouseSystemQueries = () => {
                 </li>
             ))}
         </ul>
-    )
+    );
 }
 
 

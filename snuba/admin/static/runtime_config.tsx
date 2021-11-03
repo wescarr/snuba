@@ -13,6 +13,7 @@ function RuntimeConfig(props: { api: Client }) {
     });
   }
 
+
   if (data) {
     return (
       <Table headerData={["Key", "Value"]} rowData={Object.entries(data)} />
