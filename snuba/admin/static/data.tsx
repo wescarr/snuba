@@ -2,6 +2,7 @@ import RuntimeConfig from "./runtime_config";
 import AuditLog from "./runtime_config/auditlog";
 import ClickhouseQueries from "./clickhouse_queries";
 import TracingQueries from "./tracing";
+import RateLimits from "./ratelimits";
 
 function Placeholder(props: any) {
   return null;
@@ -24,6 +25,11 @@ const NAV_ITEMS = [
     id: "auditlog",
     display: "Audit log",
     component: AuditLog,
+  },
+  {
+    id: "ratelimits",
+    display: "Rate Limits 📉",
+    component: RateLimits,
   },
 ];
 
