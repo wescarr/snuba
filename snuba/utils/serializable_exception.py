@@ -136,6 +136,8 @@ class SerializableException(Exception):
         # is **DEFINED** not when its __init__ function is called (the name is a bit confusing)
         # This is how we keep a registry of all the defined snuba Exceptions. It happens
         # at the time that the python AST is loaded into memory
+        assert cls.__init__ is SerializableException.__init__
+
         _get_registry().register_class(cls)
         return super().__init_subclass__()
 

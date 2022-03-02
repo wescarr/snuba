@@ -23,8 +23,13 @@ class QueryException(SerializableException):
     the cause of the exception.
     """
 
-    def __init__(self, extra: QueryExtraData):
-        self.extra = extra
+    extra: QueryExtraData
+
+    @classmethod
+    def from_args(cls, extra: QueryExtraData) -> "QueryException":
+        res = cls()
+        res.extra = extra
+        return res
 
 
 class QueryResult(NamedTuple):
