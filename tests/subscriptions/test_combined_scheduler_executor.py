@@ -1,5 +1,6 @@
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from datetime import datetime, timedelta
 from unittest import mock
@@ -47,6 +48,7 @@ def test_combined_scheduler_and_executor() -> None:
     entity_names = ["events"]
     num_partitions = 2
     max_concurrent_queries = 2
+    executor = ThreadPoolExecutor(max_concurrent_queries)
     metrics = TestingMetricsBackend()
 
     commit = mock.Mock()
@@ -65,6 +67,7 @@ def test_combined_scheduler_and_executor() -> None:
         factory = CombinedSchedulerExecutorFactory(
             dataset,
             entity_names,
+            executor,
             num_partitions,
             max_concurrent_queries,
             producer,
