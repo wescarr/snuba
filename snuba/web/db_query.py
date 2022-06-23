@@ -616,29 +616,8 @@ def raw_query(
         if isinstance(cause, RateLimitExceeded):
             stats = update_with_status(QueryStatus.RATE_LIMITED)
         else:
-            error_code = None
-            with configure_scope() as scope:
-                if isinstance(cause, ClickhouseError):
-                    error_code = cause.code
-                    scope.fingerprint = ["{{default}}", str(cause.code)]
-                    if scope.span:
-                        if cause.code == errors.ErrorCodes.TOO_SLOW:
-                            sentry_sdk.set_tag("timeout", "predicted")
-                        elif cause.code == errors.ErrorCodes.TIMEOUT_EXCEEDED:
-                            sentry_sdk.set_tag("timeout", "query_timeout")
-                        elif cause.code in (
-                            errors.ErrorCodes.SOCKET_TIMEOUT,
-                            errors.ErrorCodes.NETWORK_ERROR,
-                        ):
-                            sentry_sdk.set_tag("timeout", "network")
-                elif isinstance(
-                    cause,
-                    (TimeoutError, ExecutionTimeoutError, TigerExecutionTimeoutError),
-                ):
-                    if scope.span:
-                        sentry_sdk.set_tag("timeout", "cache_timeout")
-
-                logger.exception("Error running query: %s\n%s", sql, cause)
+            log_query_exception(cause, sql)
+            error_code = cause.code if isinstance(cause, ClickhouseError) else None
             stats = update_with_status(QueryStatus.ERROR, error_code=error_code)
         raise QueryException(
             {
@@ -657,3 +636,27 @@ def raw_query(
                 "experiments": clickhouse_query.get_experiments(),
             },
         )
+
+
+def log_query_exception(cause: Exception, sql: str) -> None:
+    with configure_scope() as scope:
+        if isinstance(cause, ClickhouseError):
+            scope.fingerprint = ["{{default}}", str(cause.code)]
+            if scope.span:
+                if cause.code == errors.ErrorCodes.TOO_SLOW:
+                    sentry_sdk.set_tag("timeout", "predicted")
+                elif cause.code == errors.ErrorCodes.TIMEOUT_EXCEEDED:
+                    sentry_sdk.set_tag("timeout", "query_timeout")
+                elif cause.code in (
+                    errors.ErrorCodes.SOCKET_TIMEOUT,
+                    errors.ErrorCodes.NETWORK_ERROR,
+                ):
+                    sentry_sdk.set_tag("timeout", "network")
+        elif isinstance(
+            cause,
+            (TimeoutError, ExecutionTimeoutError, TigerExecutionTimeoutError),
+        ):
+            if scope.span:
+                sentry_sdk.set_tag("timeout", "cache_timeout")
+
+        logger.exception("Error running query: %s\n%s", sql, cause)
