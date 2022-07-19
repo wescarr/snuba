@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import math
 import time
 from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -45,29 +44,6 @@ from snuba.web.query import parse_and_run_query
 logger = logging.getLogger(__name__)
 
 COMMIT_FREQUENCY_SEC = 1
-
-
-def calculate_max_concurrent_queries(
-    assigned_partition_count: int,
-    total_partition_count: int,
-    total_concurrent_queries: int,
-) -> int:
-    """
-    As consumers are scaled up or down, max_concurrent_queries should
-    change accordingly per replica. Fewer replicas means each replica
-    can have more max_concurrent_queries and vice versa.
-
-    We use the total_partition_count and assigned_partition_count to estimate
-    how many total replicas there are, which in turn lets us calc the
-    max_concurrent_queries for the given replica.
-
-    Round up since .5 of a replica doesnt really
-    make sense. total_partition_count could be 0 though if something
-    went wrong trying to fetch that from the kafka admin. In that case we
-    fall back to 1 replica (meaning the max concurrent queries == the total)
-    """
-    replicas = total_partition_count / assigned_partition_count
-    return math.ceil((total_concurrent_queries / replicas))
 
 
 def build_executor_consumer(
@@ -131,13 +107,17 @@ def build_executor_consumer(
         strict_offset_reset=strict_offset_reset,
     )
 
-    total_partition_count = get_partition_count(scheduled_topic_spec.topic)
+    try:
+        partition_count = get_partition_count(scheduled_topic_spec.topic)
+    except Exception:
+        logger.error("partition count unavailable..", exc_info=True)
+        partition_count = 0
 
     # XXX: for now verify that the partition_counts are correct for
     # the executors.
     metrics.gauge(
         "executor.partition_count",
-        total_partition_count,
+        partition_count,
         tags={"topic": scheduled_topic_spec.topic_name},
     )
 
@@ -170,7 +150,6 @@ def build_executor_consumer(
         SubscriptionExecutorProcessingFactory(
             max_concurrent_queries,
             total_concurrent_queries,
-            total_partition_count,
             dataset,
             entity_names,
             producer,
@@ -186,7 +165,6 @@ class SubscriptionExecutorProcessingFactory(ProcessingStrategyFactory[KafkaPaylo
         self,
         max_concurrent_queries: int,
         total_concurrent_queries: int,
-        total_partition_count: int,
         dataset: Dataset,
         entity_names: Sequence[str],
         producer: Producer[KafkaPayload],
@@ -196,7 +174,6 @@ class SubscriptionExecutorProcessingFactory(ProcessingStrategyFactory[KafkaPaylo
     ) -> None:
         self.__max_concurrent_queries = max_concurrent_queries
         self.__total_concurrent_queries = total_concurrent_queries
-        self.__total_partition_count = total_partition_count
         self.__dataset = dataset
         self.__entity_names = entity_names
         self.__producer = producer
@@ -209,26 +186,11 @@ class SubscriptionExecutorProcessingFactory(ProcessingStrategyFactory[KafkaPaylo
         commit: Callable[[Mapping[Partition, Position]], None],
         partitions: Mapping[Partition, int],
     ) -> ProcessingStrategy[KafkaPayload]:
-
-        calculated_max_concurrent_queries = calculate_max_concurrent_queries(
-            len(partitions),
-            self.__total_partition_count,
-            self.__total_concurrent_queries,
-        )
-        # XXX(meredith): temporarily log both the calculated and passed in
-        # max concurrent queries
-        self.__metrics.gauge(
-            "calculated_max_concurrent_queries", calculated_max_concurrent_queries
-        )
-        self.__metrics.gauge("max_concurrent_queries", self.__max_concurrent_queries)
-
-        if state.get_config("use_calculated_max_concurrent_queries", False):
-            self.__max_concurrent_queries = calculated_max_concurrent_queries
-
         return ExecuteQuery(
             self.__dataset,
             self.__entity_names,
             self.__max_concurrent_queries,
+            self.__total_concurrent_queries,
             self.__stale_threshold_seconds,
             self.__metrics,
             ProduceResult(self.__producer, self.__result_topic, commit),
@@ -246,6 +208,7 @@ class ExecuteQuery(ProcessingStrategy[KafkaPayload]):
         dataset: Dataset,
         entity_names: Sequence[str],
         max_concurrent_queries: int,
+        total_concurrent_queries: int,
         stale_threshold_seconds: Optional[int],
         metrics: MetricsBackend,
         next_step: ProcessingStrategy[SubscriptionTaskResult],
@@ -253,6 +216,7 @@ class ExecuteQuery(ProcessingStrategy[KafkaPayload]):
         self.__dataset = dataset
         self.__entity_names = set(entity_names)
         self.__max_concurrent_queries = max_concurrent_queries
+        self.__total_concurrent_queries = total_concurrent_queries
         self.__executor = ThreadPoolExecutor(self.__max_concurrent_queries)
         self.__stale_threshold_seconds = stale_threshold_seconds
         self.__metrics = metrics
@@ -382,7 +346,6 @@ class ExecuteQuery(ProcessingStrategy[KafkaPayload]):
     def terminate(self) -> None:
         self.__closed = True
 
-        self.__executor.shutdown()
         self.__next_step.terminate()
 
     def join(self, timeout: Optional[float] = None) -> None:

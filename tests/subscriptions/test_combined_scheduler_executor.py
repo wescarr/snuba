@@ -43,10 +43,21 @@ def test_combined_scheduler_and_executor() -> None:
     create_subscription()
     epoch = datetime(1970, 1, 1)
 
-    topic = Topic("snuba-commit-log")
-    partitions = {Partition(topic, 0): 0}
-    partition = Partition(topic, 0)
+    dataset = get_dataset("events")
+    entity_names = ["events"]
+    num_partitions = 2
+    max_concurrent_queries = 2
+    total_concurrent_queries = 2
+    metrics = TestingMetricsBackend()
+
     commit = mock.Mock()
+    partitions = mock.Mock()
+
+    topic = Topic("snuba-commit-log")
+    partition = Partition(topic, 0)
+    stale_threshold_seconds = None
+    result_topic = "events-subscription-results"
+    schedule_ttl = 60
 
     producer = KafkaProducer(
         build_kafka_producer_configuration(SnubaTopic.SUBSCRIPTION_RESULTS_EVENTS)
@@ -54,16 +65,16 @@ def test_combined_scheduler_and_executor() -> None:
 
     with closing(producer):
         factory = CombinedSchedulerExecutorFactory(
-            dataset=get_dataset("events"),
-            entity_names=["events"],
-            partitions=1,
-            max_concurrent_queries=2,
-            total_concurrent_queries=2,
-            producer=producer,
-            metrics=TestingMetricsBackend(),
-            stale_threshold_seconds=None,
-            result_topic="events-subscription-results",
-            schedule_ttl=60,
+            dataset,
+            entity_names,
+            num_partitions,
+            max_concurrent_queries,
+            total_concurrent_queries,
+            producer,
+            metrics,
+            stale_threshold_seconds,
+            result_topic,
+            schedule_ttl,
         )
 
         strategy = factory.create_with_partitions(commit, partitions)
