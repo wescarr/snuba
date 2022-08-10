@@ -1,47 +1,47 @@
-from typing import Callable, MutableMapping, Sequence, Set
+import importlib
+import inspect
+import os
+from typing import Callable, List, MutableMapping, Sequence
 
-from snuba import settings
 from snuba.datasets.dataset import Dataset
 from snuba.util import with_span
 from snuba.utils.serializable_exception import SerializableException
-import importlib
 
 
 class InvalidDatasetError(SerializableException):
     """Exception raised on invalid dataset access."""
 
 
+def find_dataset_definitions_directory(root: str) -> List[str]:
+    for path, _, files in os.walk(root):
+        path_list = path.split("/")
+        # Checks that top level root is snuba repo and directory name is dataset_definitions
+        if (
+            len(path_list) > 1
+            and path_list[1] == "snuba"
+            and path_list[-1] == "dataset_definitions"
+        ):
+            return [path + "/" + dataset_definition for dataset_definition in files]
+    raise InvalidDatasetError("Unable to load dataset definitions file")
+
+
 @with_span()
 def get_dataset(name: str) -> Dataset:
-    from snuba.datasets.dataset_definitions.groupassignee import GroupAssigneeDataset
-    from snuba.datasets.dataset_definitions.groupedmessage import GroupedMessageDataset
-    from snuba.datasets.dataset_definitions.discover import DiscoverDataset
-    from snuba.datasets.dataset_definitions.events import EventsDataset
-    from snuba.datasets.dataset_definitions.functions import FunctionsDataset
-    from snuba.datasets.dataset_definitions.generic_metrics import GenericMetricsDataset
-    from snuba.datasets.dataset_definitions.metrics import MetricsDataset
-    from snuba.datasets.dataset_definitions.outcomes import OutcomesDataset
-    from snuba.datasets.dataset_definitions.outcomes_raw import OutcomesRawDataset
-    from snuba.datasets.dataset_definitions.profiles import ProfilesDataset
-    from snuba.datasets.dataset_definitions.replays import ReplaysDataset
-    from snuba.datasets.dataset_definitions.sessions import SessionsDataset
-    from snuba.datasets.dataset_definitions.transactions import TransactionsDataset
+    dataset_factories: MutableMapping[str, Callable[[], Dataset]] = {}
+    dataset_definition_paths = find_dataset_definitions_directory(".")
+    for p in dataset_definition_paths:
+        p_without_ext = os.path.splitext(p)[0]
+        package_import_path = ".".join(p_without_ext.split("/")[1:])
+        module = importlib.import_module(package_import_path)
 
-    dataset_factories: MutableMapping[str, Callable[[], Dataset]] = {
-        "discover": DiscoverDataset,
-        "events": EventsDataset,
-        "groupassignee": GroupAssigneeDataset,
-        "groupedmessage": GroupedMessageDataset,
-        "metrics": MetricsDataset,
-        "outcomes": OutcomesDataset,
-        "outcomes_raw": OutcomesRawDataset,
-        "sessions": SessionsDataset,
-        "transactions": TransactionsDataset,
-        "profiles": ProfilesDataset,
-        "functions": FunctionsDataset,
-        "generic_metrics": GenericMetricsDataset,
-        "replays": ReplaysDataset,
-    }
+        # Only load the main dataset classes in each module
+        # TODO: there's probably a better way to do this
+        # Note: groupassignee and groupedmessage will be the keys since we're using filename as key names
+        for class_name, obj in inspect.getmembers(module):
+            if inspect.isclass(obj) and package_import_path in obj.__module__:
+                dataset_factories[p_without_ext.split("/")[-1]] = getattr(
+                    module, class_name
+                )
 
     try:
         dataset = dataset_factories[name]()
@@ -51,7 +51,7 @@ def get_dataset(name: str) -> Dataset:
     return dataset
 
 
-def change_case(str) -> str:
+def change_case(str: str) -> str:
     res = [str[0].lower()]
     for c in str[1:]:
         if c in ("ABCDEFGHIJKLMNOPQRSTUVWXYZ"):
