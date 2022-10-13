@@ -71,4 +71,6 @@ def countIf(
 
 
 def identity(expression: Expression, alias: Optional[str]) -> FunctionCall:
+    result = FunctionCall(alias, "identity", (expression,))
+    print(f"returning {result}\n")
     return FunctionCall(alias, "identity", (expression,))

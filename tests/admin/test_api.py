@@ -274,3 +274,42 @@ def test_convert_SnQL_to_SQL_valid_query(admin_api: FlaskClient) -> None:
     assert response.status_code == 200
     data = json.loads(response.data)
     assert data["sql"] != ""
+
+
+def test_identity_null(admin_api: FlaskClient) -> None:
+    snql_query_null = """
+    MATCH
+        (discover)
+    SELECT
+        transaction_status,
+        transaction BY location
+    WHERE
+        timestamp >= toDateTime('2022-10-10T09:42:20')
+        AND timestamp < toDateTime('2022-10-11T09:42:20')
+        AND project_id = 1
+    """
+    snql_query = """
+    MATCH
+        (discover)
+    SELECT
+        transaction BY location
+    WHERE
+        timestamp >= toDateTime('2022-10-10T09:42:20')
+        AND timestamp < toDateTime('2022-10-11T09:42:20')
+        AND project_id = 1
+    """
+    response = admin_api.post(
+        "/snql_to_sql",
+        data=json.dumps({"dataset": "discover", "query": snql_query_null}),
+    )
+    data = json.loads(response.data)
+    print("===")
+    print(data["sql"])
+    print("-" * 40)
+    response = admin_api.post(
+        "/snql_to_sql",
+        data=json.dumps({"dataset": "discover", "query": snql_query}),
+    )
+    data = json.loads(response.data)
+    print("===")
+    print(data["sql"])

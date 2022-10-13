@@ -76,7 +76,10 @@ class DefaultNoneColumnMapper(ColumnMapper):
         expression: Column,
         children_translator: SnubaClickhouseStrictTranslator,
     ) -> Optional[FunctionCall]:
+        print(f"Attempting a map for {expression.column_name}..")
+        # print([c.name for c in self.columns])
         if expression.column_name in self.columns:
+            print("DefaultNoneColumnMapper")
             return identity(
                 Literal(None, None),
                 expression.alias
@@ -107,6 +110,7 @@ class DefaultNoneFunctionMapper(FunctionCallMapper):
         children_translator: SnubaClickhouseStrictTranslator,
     ) -> Optional[FunctionCall]:
         if self.function_match.match(expression):
+            print("DefaultNoneFunctionMapper")
             return identity(Literal(None, None), expression.alias)
 
         return None
@@ -142,6 +146,7 @@ class DefaultIfNullFunctionMapper(FunctionCallMapper):
             # collapse the entire expression.
             fmatch = self.function_match.match(param)
             if fmatch is not None:
+                print("DefaultIfNullFunctionMapper")
                 return identity(Literal(None, None), expression.alias)
 
         return None
@@ -170,6 +175,7 @@ class DefaultIfNullCurriedFunctionMapper(CurriedFunctionCallMapper):
             # collapse the entire expression.
             fmatch = self.function_match.match(param)
             if fmatch is not None:
+                print("DefaultIfNullCurriedFunctionMapper")
                 return identity(Literal(None, None), expression.alias)
 
         return None
@@ -192,6 +198,7 @@ class DefaultNoneSubscriptMapper(SubscriptableReferenceMapper):
         children_translator: SnubaClickhouseStrictTranslator,
     ) -> Optional[FunctionCall]:
         if expression.column.column_name in self.subscript_names:
+            print("DefaultNoneSubscriptMapper")
             return identity(Literal(None, None), expression.alias)
         else:
             return None
