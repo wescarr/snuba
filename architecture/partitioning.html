@@ -1,0 +1,180 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+    <title>Snuba Data Partitioning (under development) &#8212; Snuba 22.11.0.dev0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css" />
+    <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+    <script src="../_static/jquery.js"></script>
+    <script src="../_static/underscore.js"></script>
+    <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="../_static/doctools.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Snuba Query Processing" href="queryprocessing.html" />
+    <link rel="prev" title="Snuba Data Model" href="datamodel.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="snuba-data-partitioning-under-development">
+<h1>Snuba Data Partitioning (under development)<a class="headerlink" href="#snuba-data-partitioning-under-development" title="Permalink to this heading">¶</a></h1>
+<p><em>This feature is under active development and is subject to change</em></p>
+<p>To support a higher volume of data, we are building out support for
+datasets and storages that span multiple physical resources
+(Kafka clusters, Redis instances, Postgres databases, ClickHouse clusters,
+etc.) with the same schema. Across Sentry, data records will
+have a logical partition assignment based on the data’s organization_id. In Snuba,
+we maintain a mapping of logical partitions to physical slices in
+<code class="docutils literal notranslate"><span class="pre">settings.LOGICAL_PARTITION_MAPPING</span></code>.</p>
+<p>In a future revision, this <code class="docutils literal notranslate"><span class="pre">settings.LOGICAL_PARTITION_MAPPING</span></code> will be
+used along with <code class="docutils literal notranslate"><span class="pre">settings.SLICED_STORAGES</span></code> to map queries and incoming
+data from consumers to different ClickHouse clusters by overriding the
+StorageSet key that exists in configuration.</p>
+</section>
+<section id="adding-a-slice">
+<h1>Adding a slice<a class="headerlink" href="#adding-a-slice" title="Permalink to this heading">¶</a></h1>
+<section id="add-the-logical-physical-mapping">
+<h2>Add the logical:physical mapping<a class="headerlink" href="#add-the-logical-physical-mapping" title="Permalink to this heading">¶</a></h2>
+<p>To add a physical partition to a storage’s logical:physical mapping, or repartition,
+increment the slice count in <code class="docutils literal notranslate"><span class="pre">settings.SLICED_STORAGES</span></code> for the relevant
+storage. Change the mapping of the relevant storage’s
+logical partitions in <code class="docutils literal notranslate"><span class="pre">settings.LOGICAL_PARTITION_MAPPING</span></code>.
+Every logical partition <strong>must</strong> be assigned to a slice and the
+valid values of slices are in the range of <code class="docutils literal notranslate"><span class="pre">[0,settings.SLICED_STORAGES[storage])</span></code>.</p>
+</section>
+<section id="defining-sliced-clickhouse-clusters">
+<h2>Defining sliced ClickHouse clusters<a class="headerlink" href="#defining-sliced-clickhouse-clusters" title="Permalink to this heading">¶</a></h2>
+<p>To add a cluster with an associated (storage set key, slice) pair, add cluster definitions
+to <code class="docutils literal notranslate"><span class="pre">settings.SLICED_CLUSTERS</span></code> in the desired environment’s settings. Follow the same structure as
+regular cluster definitions in <code class="docutils literal notranslate"><span class="pre">settings.CLUSTERS</span></code>. In the <code class="docutils literal notranslate"><span class="pre">storage_set_slices</span></code> field, sliced storage
+sets should be added in the form of <code class="docutils literal notranslate"><span class="pre">(StorageSetKey,</span> <span class="pre">slice_id)</span></code> where slice_id is in
+the range <code class="docutils literal notranslate"><span class="pre">[0,settings.SLICED_STORAGES[storage])</span></code> for relevant storages.</p>
+</section>
+<section id="preparing-the-storage-for-sharding">
+<h2>Preparing the storage for sharding<a class="headerlink" href="#preparing-the-storage-for-sharding" title="Permalink to this heading">¶</a></h2>
+<p>A storage that should be sharded requires setting the partition key column that will be used
+to calculate the logical partition and ultimately the slice ID for how to query the destination
+data.</p>
+<p>This is done with the <cite>partition_key_column_name</cite> property in the storage schema (we do not
+support sharded storages for non-YAML based entities). You can see an example of how one
+might shard by organization_id in generic_metrics_sets and generic_metrics_distributions
+dataset YAML files.</p>
+</section>
+<section id="configuring-sliced-kafka-topics">
+<h2>Configuring sliced Kafka topics<a class="headerlink" href="#configuring-sliced-kafka-topics" title="Permalink to this heading">¶</a></h2>
+<p>In order to define a “sliced” Kafka topic, add <code class="docutils literal notranslate"><span class="pre">(default</span> <span class="pre">logical</span> <span class="pre">topic</span> <span class="pre">name,</span> <span class="pre">slice</span> <span class="pre">id)</span></code> to
+<code class="docutils literal notranslate"><span class="pre">settings.SLICED_KAFKA_TOPIC_MAP</span></code>. This tuple should be mapped to a custom physical topic
+name of the form <code class="docutils literal notranslate"><span class="pre">logical_topic_name-slice_id</span></code>. Make sure to add the corresponding broker
+configuration details to <code class="docutils literal notranslate"><span class="pre">settings.SLICED_KAFKA_BROKER_CONFIG</span></code>. Here, use the same tuple
+<code class="docutils literal notranslate"><span class="pre">(default</span> <span class="pre">logical</span> <span class="pre">topic</span> <span class="pre">name,</span> <span class="pre">slice</span> <span class="pre">id)</span></code> as the key, and the broker config info as the value.</p>
+<p>Example configurations:
+<code class="docutils literal notranslate"><span class="pre">SLICED_KAFKA_TOPIC_MAP</span></code> = {(“snuba-generic-metrics”, 1): “snuba-generic-metrics-1”}
+<code class="docutils literal notranslate"><span class="pre">SLICED_KAFKA_BROKER_CONFIG</span></code> = {(“snuba-generic-metrics”, 1): BROKER_CONFIG}</p>
+</section>
+<section id="todo-handling-subscriptions-etc">
+<h2>TODO: handling subscriptions, etc.<a class="headerlink" href="#todo-handling-subscriptions-etc" title="Permalink to this heading">¶</a></h2>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="../index.html">
+              <img class="logo" src="../_static/snuba.svg" alt="Logo"/>
+            </a></p>
+<h1 class="logo"><a href="../index.html">Snuba</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../getstarted.html">Getting started with Snuba</a></li>
+<li class="toctree-l1"><a class="reference internal" href="overview.html">Snuba Architecture Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="overview.html#snuba-within-a-sentry-deployment">Snuba within a Sentry Deployment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="datamodel.html">Snuba Data Model</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Snuba Data Partitioning (under development)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#adding-a-slice">Adding a slice</a></li>
+<li class="toctree-l1"><a class="reference internal" href="queryprocessing.html">Snuba Query Processing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../configuration/overview.html">Dataset Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../query/overview.html">Querying Snuba</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../language/snql.html">The SnQL query language</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../migrations/modes.html">Snuba Migration Modes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../contributing/environment.html">Snuba development environment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../clickhouse/death_queries.html">Clickhouse Queries Of Death</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="datamodel.html" title="previous chapter">Snuba Data Model</a></li>
+      <li>Next: <a href="queryprocessing.html" title="next chapter">Snuba Query Processing</a></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2021, Sentry Team and Contributors.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 5.1.1</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="../_sources/architecture/partitioning.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
