@@ -119,9 +119,7 @@ def test_run_reverse_migrations(admin_api: FlaskClient, action: str) -> None:
         },
     ):
         # invalid action
-        response = admin_api.post(
-            "/migrations/system/invalid_but_allowed_group/0001_migrations/"
-        )
+        response = admin_api.post("/migrations/system/invalid_action/0001_migrations/")
         assert response.status_code == 404
 
         # invalid migration group
